@@ -1,221 +1,286 @@
+import 'dart:math';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:hive/hive.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:intl/intl.dart';
 import 'package:task3/core/constants/colors.dart';
 import 'package:task3/core/widgets/custom_button.dart';
 import 'package:task3/core/widgets/custom_text.dart';
-import 'package:task3/core/widgets/custom_text_form_field.dart';
+import 'package:task3/core/widgets/custom_borderless_field.dart';
+import 'package:task3/core/widgets/date_time_selector.dart';
 import 'package:task3/data/models/task_model.dart';
-import 'dart:math';
+import 'package:task3/cubits/task_cubit.dart';
+import 'package:task3/cubits/theme_cubit.dart';
 
 class AddTaskScreen extends StatefulWidget {
-  const AddTaskScreen({super.key});
+  final Task? task;
+  const AddTaskScreen({super.key, this.task});
 
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
 }
 
 class _AddTaskScreenState extends State<AddTaskScreen> {
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _noteController = TextEditingController();
-  final TextEditingController _dateController = TextEditingController();
-  final TextEditingController _timeController = TextEditingController();
+  late TextEditingController _titleController;
+  late TextEditingController _noteController;
+  late FToast fToast;
 
-  DateTime? _selectedDate;
-  TimeOfDay? _selectedTime;
+  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedTime = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _dateController.text = DateFormat('EEE, MMM d, yyyy').format(DateTime.now());
-    _timeController.text = DateFormat('hh:mm a').format(DateTime.now());
-  }
+    fToast = FToast();
+    fToast.init(context);
 
-  Future<void> _getDateFromUser() async {
-    DateTime? pickerDate = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2030),
+    _titleController = TextEditingController(text: widget.task?.title ?? '');
+    _noteController = TextEditingController(
+      text: (widget.task?.note == "No Description")
+          ? ''
+          : (widget.task?.note ?? ''),
     );
 
-    if (pickerDate != null) {
-      setState(() {
-        _selectedDate = pickerDate;
-        _dateController.text = DateFormat('EEE, MMM d, yyyy'
-        ).format(_selectedDate!);
-      });
+    if (widget.task != null) {
+      try {
+        _selectedDate = DateFormat('EEE, MMM d, yyyy').parse(widget.task!.date);
+        _selectedTime = DateFormat('hh:mm a').parse(widget.task!.time);
+      } catch (e) {
+        _selectedDate = DateTime.now();
+        _selectedTime = DateTime.now();
+      }
     }
   }
 
-  Future<void> _getTimeFromUser() async {
-    TimeOfDay? pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-
-    if (pickedTime != null) {
-      final now = DateTime.now();
-      final dt = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        pickedTime.hour,
-        pickedTime.minute,
-      );
-      final format = DateFormat('hh:mm a');
-
-      setState(() {
-        _selectedTime = pickedTime;
-        _timeController.text = format.format(dt);
-      });
-    }
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _noteController.dispose();
+    super.dispose();
   }
 
-  void _addTask() {
-    if (_titleController.text.isNotEmpty && _noteController.text.isNotEmpty) {
-      var task = Task(
-        id: Random().nextInt(10000).toString(),
-        title: _titleController.text,
-        note: _noteController.text,
-        date: _dateController.text,
-        time: _timeController.text,
-        isCompleted: false,
-      );
+  void _showToast(String text, {bool isError = false}) {
+    fToast.init(context);
+    Widget toast = Container(
+      padding: EdgeInsets.symmetric(horizontal: 24.0.w, vertical: 12.0.h),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25.0.r),
+        color: isError ? Colors.redAccent : Colors.green,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isError ? Icons.error_outline : Icons.check,
+            color: Colors.white,
+          ),
+          SizedBox(width: 12.w),
+          Text(
+            text,
+            style: TextStyle(color: Colors.white, fontSize: 14.sp),
+          ),
+        ],
+      ),
+    );
 
-      var box = Hive.box<Task>('tasks');
-      box.add(task);
+    fToast.showToast(
+      child: toast,
+      gravity: ToastGravity.BOTTOM,
+      toastDuration: const Duration(seconds: 2),
+    );
+  }
+
+  void _showDatePicker() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (_) => Container(
+        height: 250.h,
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 190.h,
+              child: CupertinoDatePicker(
+                initialDateTime: _selectedDate,
+                mode: CupertinoDatePickerMode.date,
+                minimumDate: DateTime.now().subtract(const Duration(days: 365)),
+                maximumDate: DateTime(2030),
+                onDateTimeChanged: (val) {
+                  setState(() {
+                    _selectedDate = val;
+                  });
+                },
+              ),
+            ),
+            CupertinoButton(
+              child: const Text('Done'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTimePicker() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (_) => Container(
+        height: 250.h,
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 190.h,
+              child: CupertinoDatePicker(
+                initialDateTime: _selectedTime,
+                mode: CupertinoDatePickerMode.time,
+                use24hFormat: false,
+                onDateTimeChanged: (val) {
+                  setState(() {
+                    _selectedTime = val;
+                  });
+                },
+              ),
+            ),
+            CupertinoButton(
+              child: const Text('Done'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _addOrUpdateTask() {
+    if (_titleController.text.isNotEmpty) {
+      String formattedTime = DateFormat('hh:mm a').format(_selectedTime);
+      String formattedDate = DateFormat(
+        'EEE, MMM d, yyyy',
+      ).format(_selectedDate);
+
+      if (widget.task != null) {
+        widget.task!.title = _titleController.text;
+        widget.task!.note = _noteController.text.isEmpty
+            ? "No Description"
+            : _noteController.text;
+        widget.task!.date = formattedDate;
+        widget.task!.time = formattedTime;
+
+        context.read<TaskCubit>().updateTask(widget.task!);
+        _showToast("Task updated successfully");
+      } else {
+        var newTask = Task(
+          id: Random().nextInt(10000).toString(),
+          title: _titleController.text,
+          note: _noteController.text.isEmpty
+              ? "No Description"
+              : _noteController.text,
+          date: formattedDate,
+          time: formattedTime,
+          isCompleted: false,
+        );
+
+        context.read<TaskCubit>().addTask(newTask);
+      }
 
       Navigator.pop(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: CustomText(text: "Please enter title and note", textColor: Colors.white),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showToast("Please enter a task title!", isError: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final isDarkMode = context.select((ThemeCubit cubit) => cubit.state);
     Color textColor = isDarkMode ? Colors.white : Colors.black;
-    Color inputFillColor = isDarkMode ? AppColors.darkContainerColor : Colors.grey[50]!;
-    Color inputTextColor = isDarkMode ? Colors.white : Colors.black;
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
+        backgroundColor: isDarkMode ? Colors.black : Colors.white,
         appBar: AppBar(
+          backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: Icon(Icons.arrow_back_ios, color: textColor),
+            icon: Icon(Icons.arrow_back_ios_new, color: textColor),
             onPressed: () => Navigator.pop(context),
           ),
-          centerTitle: true,
         ),
         body: SingleChildScrollView(
           padding: EdgeInsets.symmetric(horizontal: 20.w),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 75.w,
-                      height: 1.h,
-                      decoration: const BoxDecoration(color: AppColors.grey),
-                    ),
-                    CustomText(
-                      text: "Add New Task",
-                      fontSize: 24.sp,
-                      fontWeight: FontWeight.bold,
+              SizedBox(height: 60.h),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(height: 1.h, width: 40.w, color: AppColors.grey),
+                  Center(
+                    child: CustomText(
+                      text: widget.task != null ? "Edit Task" : "Add New Task",
+                      fontSize: 20.sp,
+                      fontWeight: FontWeight.w600,
                       textColor: textColor,
                     ),
-                    Container(
-                      width: 75.w,
-                      height: 1.h,
-                      decoration: const BoxDecoration(color: AppColors.grey),
-                    ),
-                  ],
-                ),
+                  ),
+                  Container(height: 1.h, width: 40.w, color: AppColors.grey),
+                ],
               ),
-              SizedBox(height: 30.h),
-              CustomText(
-                  text: "What are you planing😇?",
-                  fontSize: 16.sp,
-                  textColor: textColor
-              ),
-              SizedBox(height: 10.h),
-              TextField(
+              SizedBox(height: 20.h),
+              CustomBorderlessField(
                 controller: _titleController,
-                maxLines: 3,
-                style: TextStyle(color: inputTextColor),
-                decoration: InputDecoration(
-                  hintText: "Enter task title",
-                  hintStyle: const TextStyle(color: Colors.grey),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.r),
-                  ),
-                  filled: true,
-                  fillColor: inputFillColor,
-                ),
+                hintText: "What are you planing😇?",
+                fontSize: 18.sp,
+                maxLines: 4,
+                hintColor: Colors.grey,
+                textColor: textColor,
               ),
-              SizedBox(height: 20.h),
-              Row(
-                children: [
-                  Icon(Icons.bookmark_border, color: AppColors.primaryColor),
-                  SizedBox(width: 10.w),
-                  CustomText(text: "Add Note", fontSize: 16.sp, textColor: textColor),
-                ],
-              ),
+
               SizedBox(height: 10.h),
-              TextField(
+              Divider(color: Colors.grey[300], thickness: 1.h),
+              SizedBox(height: 10.h),
+
+              CustomBorderlessField(
                 controller: _noteController,
-                style: TextStyle(color: inputTextColor),
-                decoration: InputDecoration(
-                  hintText: "Enter note",
-                  hintStyle: const TextStyle(color: Colors.grey),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.r),
-                  ),
-                  filled: true,
-                  fillColor: inputFillColor,
-                ),
+                hintText: "Add Note",
+                fontSize: 16.sp,
+                maxLines: 2,
+                icon: Icons.bookmark_border_rounded,
+                hintColor: Colors.grey.shade600,
+                textColor: textColor,
               ),
+
+              SizedBox(height: 30.h),
+
+              DateTimeSelector(
+                label: "Time",
+                value: DateFormat('hh:mm a').format(_selectedTime),
+                onTap: _showTimePicker,
+              ),
+
               SizedBox(height: 20.h),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomText(text: "Time", fontSize: 15.sp, textColor: textColor),
-                  SizedBox(height: 5.h),
-                  CustomTextFormField(
-                    controller: _timeController,
-                    onTap: _getTimeFromUser,
-                  ),
-                ],
+
+              DateTimeSelector(
+                label: "Date",
+                value: DateFormat('MMM d, yyyy').format(_selectedDate),
+                onTap: _showDatePicker,
               ),
-              SizedBox(height: 20.h),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomText(text: "Date", fontSize: 15.sp, textColor: textColor),
-                  SizedBox(height: 5.h),
-                  CustomTextFormField(controller: _dateController, onTap: _getDateFromUser),
-                ],
-              ),
-              SizedBox(height: 50.h),
+
+              SizedBox(height: 60.h),
+
               Center(
                 child: SizedBox(
-                  width: 180.w,
-                  height: 50.h,
-                  child:
-                  CustomButton(onTap: _addTask, text: "Add Task"),
+                  width: 200.w,
+                  height: 55.h,
+                  child: CustomButton(
+                    onTap: _addOrUpdateTask,
+                    text: widget.task != null ? "Edit Task" : "Add Task",
+                  ),
                 ),
               ),
             ],
